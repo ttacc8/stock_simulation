@@ -1,6 +1,7 @@
 ## this file contains methods related to stock management
 
 import pandas as pd
+import numpy as np
 
 def calculate_bollinger_bands(df: pd, nday: int, num_std_dev: float = 2.0):
     """Calculate Bollinger Bands for stock prices."""
@@ -62,7 +63,11 @@ def calculate_cci(df: pd, nday: int):
     """Calculate the Commodity Channel Index (CCI) for stock prices."""
     tp = (df['High'] + df['Low'] + df['Value']) / 3
     sma = tp.rolling(window=nday).mean()
-    mad = tp.rolling(window=nday).apply(lambda x: pd.Series(x).mad())
+    # pandas.Series.mad() was removed/unsupported in newer pandas versions.
+    # Compute mean absolute deviation (MAD) using numpy on the rolling window.
+    mad = tp.rolling(window=nday).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
+    # avoid division by zero
+    mad = mad.replace(0, np.nan)
     df[f"{nday}_CCI"] = (tp - sma) / (0.015 * mad)
     return df[f"{nday}_CCI"]
     
@@ -94,7 +99,7 @@ def calculate_vwap(df: pd):
 
 def calculate_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
     """Calculate the Stop and Reverse (SAR) for stock prices."""
-    sar = df['Value'].copy()
+    sar = df['Value'].astype(float).copy()
     sar[:] = 0.0
     up_trend = True
     af = step
@@ -176,7 +181,7 @@ def calculate_keltner_channels(df: pd, nday: int, multiplier: float = 2.0):
     
 def calculate_paralolic_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
     """Calculate the Parabolic SAR for stock prices."""
-    psar = df['Value'].copy()
+    psar = df['Value'].astype(float).copy()
     psar[:] = 0.0
     up_trend = True
     af = step
@@ -217,8 +222,8 @@ def calculate_typical_price(df: pd):
     
 def calculate_weighted_close_price(df: pd):
     """Calculate the Weighted Close for stock prices."""
-    df['Weighted_Close'] = (df['High'] + df['Low'] + (2 * df['Value'])) / 4
-    return df['Weighted_Close_price']
+    df['Weighted_Close_Price'] = (df['High'] + df['Low'] + (2 * df['Value'])) / 4
+    return df['Weighted_Close_Price']
 
 def calculate_average_price(df: pd):
     """Calculate the Average Price for stock prices."""
@@ -664,12 +669,12 @@ def calculate_supertrend_indicator(df: pd, nday: int = 10, multiplier: float = 3
     for i in range(len(df)):
         if i == 0:
             supertrend[i] = upperband[i]
-            direction[i] = True
+            direction[i] = 1.0  # True를 1.0으로 변환
         else:
             if df['Value'][i] > supertrend[i - 1]:
-                direction[i] = True
+                direction[i] = 1.0  # True를 1.0으로 변환
             elif df['Value'][i] < supertrend[i - 1]:
-                direction[i] = False
+                direction[i] = 0.0  # False를 0.0으로 변환
             else:
                 direction[i] = direction[i - 1]
 
@@ -826,6 +831,24 @@ def calculate_hull_moving_average(df: pd, nday: int):
 def calculate_all_indicators(df: pd):
     """Calculate all technical indicators for stock prices."""
     indicators = {}
+    indicators['SMA5'] = calculate_sma(df, nday=5)
+    indicators['SMA20'] = calculate_sma(df, nday=20)
+    indicators['SMA60'] = calculate_sma(df, nday=60)
+    indicators['SMA120'] = calculate_sma(df, nday=120)
+    indicators['EMA'] = calculate_ema(df, nday=20)
+    indicators['WMA'] = calculate_wma(df, nday=20)
+    indicators['RSI'] = calculate_rsi(df, nday=14)
+    indicators['VWAP'] = calculate_vwap(df)
+    indicators['MACD'] = calculate_macd(df)
+    indicators['Bollinger_Bands'] = calculate_bollinger_bands(df, nday=20)
+    indicators['Keltener_Channels'] = calculate_keltner_channels(df, nday=20)   
+    indicators['ATR'] = calculate_atr(df, nday=14)
+    indicators['Stochastic_Oscillator'] = calculate_stochastic_oscillator(df, k_window=14, d_window=3)
+    indicators['CCI'] = calculate_cci(df, nday=20)
+    indicators['ADX'] = calculate_adx(df, nday=14)
+    indicators['SAR'] = calculate_sar(df)
+    indicators['Parabolic_SAR'] = calculate_paralolic_sar(df)
+    indicators['Momentum'] = calculate_momentum(df, nday=10)
     indicators['Vortex'] = calculate_vortex_indicator(df, nday=14)
     indicators['Ultimate_Oscillator'] = calculate_ultimate_oscillator(df)
     indicators['Chande_Momentum_Oscillator'] = calculate_chande_momentum_oscillator(df, nday=14)
@@ -850,7 +873,7 @@ def calculate_all_indicators(df: pd):
     indicators['Money_Flow_Index'] = calculate_money_flow_index(df, nday=14)
     indicators['Force_Index'] = calculate_force_index(df, nday=13)
     indicators['Ease_of_Movement'] = calculate_ease_of_movement(df, nday=14)
-    indicators['Volume_Price_Trend'] = calculate_volume_price_trend(df)
+    indicators['Volume_Price_Trend'] = calculate_price_volume_trend(df)
     indicators['On_Balance_Volume'] = calculate_on_balance_volume(df)
     indicators['Volume_Rate_of_Change'] = calculate_volume_rate_of_change(df, nday=12)
     indicators['Money_Flow_Volume'] = calculate_money_flow_volume(df, nday=14)
@@ -883,4 +906,9 @@ def calculate_all_indicators(df: pd):
     indicators['Gann_Angles'] = calculate_gann_angles(df, angle_degrees=45)
     indicators['Gann_High_Low_Oscillator'] = calculate_gann_high_low_oscillator(df, nday=14)
     indicators['Hull_Moving_Average'] = calculate_hull_moving_average(df, nday=21)
+    indicators['HMA'] = calculate_hull_moving_average(df, nday=21)
+    indicators['Typical_Price'] = calculate_typical_price(df)
+    indicators['Weighted_Close_Price'] = calculate_weighted_close_price(df)
+    indicators['Average_Price'] = calculate_average_price(df)
+
     return indicators
