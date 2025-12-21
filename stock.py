@@ -13,21 +13,16 @@ class StockDataHandler:
         self.kospi_file_path = "files_kospi"
         self.processed_file_path = "modified_kospi" 
         self.test_dir = "modified_kospi_test"
-        self.test_file = "GS건설_006360.csv"
+        self.test_file = "SK증권_001510.csv"
     
     # add data
     def process_file_add_data(self, file_path: str):
-        # try:
         print(f"Adding data to file: {file_path}")
         df = pd.read_csv(file_path)
 
         moveAverage.calculate_all_indicators(df)
         
         df.to_csv(file_path, index=False)
-
-
-        # except Exception as e:
-        #     print(f"Error processing file {file_path}: {e}")
 
     # reverse data
     def process_file_data_reverse(self, file_path: str):
@@ -38,6 +33,9 @@ class StockDataHandler:
             # ["None","Value","Volume","Amount","Date", "Open","High", "Low", "None", "None"] 컬럼 출력
             df.columns = ["None","Value","Volume","Amount","Date", "Open","High", "Low", "None"]
             df.drop(columns=["None"], inplace=True, errors='ignore')
+            # Filter out rows where Date is earlier than 1993
+            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            df = df[df['Date'] >= pd.Timestamp('1993-01-01')]
             df = df.iloc[::-1].reset_index(drop=True)
 
             target_path = os.path.join(self.root_files_path,self.processed_file_path)
@@ -56,8 +54,7 @@ class StockDataHandler:
             
             
     # trade simulation 
-    def do_trade_simulation(self, file_path: str):
-        # try:
+    def do_trade_all_stratage_simulation(self, file_path: str):
         if not os.path.exists(file_path):
             print(f"Directory {file_path} does not exist.")
             return
@@ -73,45 +70,83 @@ class StockDataHandler:
         # Get the count of all CSV files in the current file_path directory
         csv_file_count = sum(1 for _, _, files in os.walk(file_path) for file in files if file.endswith('.csv'))
         print(f"Total number of CSV files in {file_path}: {csv_file_count}")
-        # if csv_file_count == len(final_df['5daySMAYield']):
-        #     print("All files have already been processed. Skipping trade simulation.")
-        #     return
+        cnt = 0
 
         for root, _, files in os.walk(file_path):
             for file in files:
                 # print(f"Processing checking: start {datetime.datetime.now()} file: {file}")
+                cnt += 1
+                if cnt % 100 == 0:
+                    print(f"Processed {cnt} / {csv_file_count} files...{cnt/csv_file_count*100:.2f}% completed.")
+                    
                 if file.endswith('.csv'):
                     read_file_path = os.path.join(root, file)
                     df = pd.read_csv(read_file_path)
 
                     # Call trade simulation functions
-                    final_yield5 = tradeSimulator.simulate_SMA_strategy(df,5,file)
-                    final_yield20 = tradeSimulator.simulate_SMA_strategy(df,20,file)
-                    final_yield60 = tradeSimulator.simulate_SMA_strategy(df,60,file)
+                    simulated_results = tradeSimulator.simulate_execute_all_strategy(df, file)
+                    simulated_results = {'File': os.path.basename(read_file_path), **simulated_results}
+                    final_df = pd.concat([final_df, pd.DataFrame([simulated_results])], ignore_index=True)
                     
-                    final_yieldCrossover_5_20 = tradeSimulator.simulate_SMA_crossover_strategy(df,5,20,file)
+                    # final_yield5 = tradeSimulator.simulate_SMA_strategy(df,5,file)
+                    # final_yield20 = tradeSimulator.simulate_SMA_strategy(df,20,file)
+                    # final_yield60 = tradeSimulator.simulate_SMA_strategy(df,60,file)
                     
-                    final_yieldBollinger = tradeSimulator.simulate_bollinger_strategy(df,20,file)
-                    final_yieldBollinger2 = tradeSimulator.simulate_bollinger_strategy2(df,20,file)
-                    final_yieldBollinger3 = tradeSimulator.simulate_bollinger_strategy3(df,20,file)
-                    final_yieldBollinger4 = tradeSimulator.simulate_bollinger_strategy4(df,20,file)
-                    final_yieldRsi = tradeSimulator.simulate_rsi_strategy(df,rsi_period = 14, overbought = 80, oversold = 30, file_name = file)
-                    final_yieldMacd = tradeSimulator.simulate_macd_strategy(df,short_period = 12, long_period = 26, signal_period = 9, file_name = file)
-                    final_yieldStochastic = tradeSimulator.simulate_stochastic_strategy(df, k_period = 14, d_period = 3, file_name = file)
+                    # final_yieldCrossover_5_20 = tradeSimulator.simulate_SMA_crossover_strategy(df,5,20,file)
+                    
+                    # final_yieldBollinger = tradeSimulator.simulate_bollinger_strategy(df,20,file)
+                    # final_yieldBollinger2 = tradeSimulator.simulate_bollinger_strategy2(df,20,file)
+                    # final_yieldBollinger3 = tradeSimulator.simulate_bollinger_strategy3(df,20,file)
+                    # final_yieldBollinger4 = tradeSimulator.simulate_bollinger_strategy4(df,20,file)
+                    # final_yieldRsi = tradeSimulator.simulate_rsi_strategy(df,rsi_period = 14, overbought = 80, oversold = 30, file_name = file)
+                    # final_yieldMacd = tradeSimulator.simulate_macd_strategy(df,short_period = 12, long_period = 26, signal_period = 9, file_name = file)
+                    # final_yieldStochastic = tradeSimulator.simulate_stochastic_strategy(df, k_period = 14, d_period = 3, file_name = file)
      
-                    final_df = pd.concat([final_df, pd.DataFrame({'File':[os.path.basename(read_file_path)],
-                                                                '5daySMAYield':[final_yield5],'20daySMAYield':[final_yield20],'60daySMAYield':[final_yield60],
-                                                                'yieldCrossover_5_20':[final_yieldCrossover_5_20],'Bollinger':[final_yieldBollinger],
-                                                                'Bollinger2':[final_yieldBollinger2],'Bollinger3':[final_yieldBollinger3],'Bollinger4':[final_yieldBollinger4],
-                                                                'RSI':[final_yieldRsi],'MACD':[final_yieldMacd],'Stochastic':[final_yieldStochastic]
-                                                                })], ignore_index=True)
-                    
-                    # temp_series = temp_series._append(pd.Series([tradeSimulator.simulate_bollinger_strategy4(df,20,file)]), ignore_index=True)
-               
-                # print(f"Processing checking: end {datetime.datetime.now()} file: {file}")    
-        # print(final_df)
-        # final_df['bollinger4'] = temp_series.values
+                    # final_df = pd.concat([final_df, pd.DataFrame({'File':[os.path.basename(read_file_path)],
+                    #                                             '5daySMAYield':[final_yield5],'20daySMAYield':[final_yield20],'60daySMAYield':[final_yield60],
+                    #                                             'yieldCrossover_5_20':[final_yieldCrossover_5_20],'Bollinger':[final_yieldBollinger],
+                    #                                             'Bollinger2':[final_yieldBollinger2],'Bollinger3':[final_yieldBollinger3],'Bollinger4':[final_yieldBollinger4],
+                    #                                             'RSI':[final_yieldRsi],'MACD':[final_yieldMacd],'Stochastic':[final_yieldStochastic]
+                    #                                             })], ignore_index=True)
+
         final_df.to_csv(target_file_path, index=False,encoding='utf-8-sig')
+    
+    
+    def do_trade_add_single_simulation(self, file_path: str):
+        if not os.path.exists(file_path):
+            print(f"Directory {file_path} does not exist.")
+            return
+
+        print(f"Processing directory: {file_path}")
+        target_file_path = os.path.join(self.root_files_path, "trade_simulation_results.csv")
+        if os.path.exists(target_file_path):
+            final_df = pd.read_csv(target_file_path)
+        else:
+            final_df = pd.DataFrame()
+        temp_series = pd.Series([], dtype='float64')
+
+        # Get the count of all CSV files in the current file_path directory
+        csv_file_count = sum(1 for _, _, files in os.walk(file_path) for file in files if file.endswith('.csv'))
+        print(f"Total number of CSV files in {file_path}: {csv_file_count}")
+        cnt = 0
+        
+        for root, _, files in os.walk(file_path):
+            for file in files:
+                cnt += 1
+                if cnt % 100 == 0:
+                    print(f"Processed {cnt} / {csv_file_count} files...{cnt/csv_file_count*100:.2f}% completed.")
+                    
+                if file.endswith('.csv'):
+                    read_file_path = os.path.join(root, file)
+                    df = pd.read_csv(read_file_path)
+
+                    final_yield_special = tradeSimulator.simulate_special_item_strategy(df, file_name = file)
+                    # print(f"Special strategy simulation yield for {file}: {final_yield_special}")
+                    temp_series = temp_series._append(pd.Series([tradeSimulator.simulate_bollinger_strategy4(df,20,file)]), ignore_index=True)
+               
+        final_df['SpecialStratage'] = temp_series.values
+        final_df.to_csv(target_file_path, index=False,encoding='utf-8-sig')
+        
 
     def do_special_item_simulation(self, file_path: str):
         if os.path.exists(file_path):
@@ -149,21 +184,30 @@ class StockDataHandler:
             self.process_directory(target_dir,self.process_file_data_reverse)
         elif command_input == 2:# add data
             target_dir = os.path.join(self.root_files_path, self.processed_file_path)
-            # target_dir = os.path.join(self.root_files_path, self.test_dir)
             self.process_directory(target_dir,self.process_file_add_data)
         elif command_input == 3: # trade simulation
             target_dir = os.path.join(self.root_files_path, self.processed_file_path)
             # target_dir = os.path.join(self.root_files_path, self.test_dir)
-            self.do_trade_simulation(target_dir)
-        elif command_input == 4: # Special item simulation
+            self.do_trade_all_stratage_simulation(target_dir)
+        elif command_input == 4: # Add special strategy simulation
+            target_dir = os.path.join(self.root_files_path, self.processed_file_path)
+            self.do_trade_add_single_simulation(target_dir)
+        elif command_input == 5: # Special item simulation
             sample_file_path = os.path.join(self.test_dir, self.test_file)
             self.do_special_item_simulation(sample_file_path)
+        elif command_input == 6: # test
+            # self.process_directory(self.test_dir, self.process_file_data_reverse)
+            # print("reverse done")
+            # self.process_directory(self.test_dir, self.process_file_add_data)
+            # print("add data done")
+            self.do_trade_all_stratage_simulation(self.test_dir)
+            print("trade simulation done")
         else:
             print("Invalid command input. Please enter 1, 2, or 3.")
 
 if __name__ == "__main__":
     handler = StockDataHandler()
-    command_input = int(input("Enter 'process' to start processing files: \n1: Reverse Data, 2: Add Data, 3: Trade Simulation, 4:Special item simulation : "))
+    command_input = int(input("Enter 'process' to start processing files: \n1: Reverse Data, 2: Add Data, 3: All Stratage Simulation, 4: Add Special Simulation 5:Special item simulation : "))
     print("Starting file processing...")
     start_time = datetime.datetime.now()
     handler.do_processing(command_input)

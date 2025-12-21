@@ -2,15 +2,20 @@
 
 import pandas as pd
 import numpy as np
+import warnings
+
+# Warning 메시지 억제
+warnings.filterwarnings('ignore', category=pd.errors.PerformanceWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
 
 def calculate_bollinger_bands(df: pd, nday: int, num_std_dev: float = 2.0):
     """Calculate Bollinger Bands for stock prices."""
     rolling_mean = df['Value'].rolling(window=nday).mean()
     rolling_std = df['Value'].rolling(window=nday).std()
 
-    df[f"{nday}_BB_upper"] = rolling_mean + (rolling_std * num_std_dev)
-    df[f"{nday}_BB_lower"] = rolling_mean - (rolling_std * num_std_dev)
-    return df[[f"{nday}_BB_upper", f"{nday}_BB_lower"]]
+    df[f"BB_upper_{nday}"] = rolling_mean + (rolling_std * num_std_dev)
+    df[f"BB_lower_{nday}"] = rolling_mean - (rolling_std * num_std_dev)
+    return df[[f"BB_upper_{nday}", f"BB_lower_{nday}"]]
     
 def calculate_rsi(df: pd, nday: int):
     """Calculate the Relative Strength Index (RSI) for stock prices."""
@@ -18,8 +23,8 @@ def calculate_rsi(df: pd, nday: int):
     gain = (delta.where(delta > 0, 0)).rolling(window=nday).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=nday).mean()
     rs = gain / loss
-    df[f"{nday}_RSI"] = 100 - (100 / (1 + rs))
-    return df[f"{nday}_RSI"]
+    df[f"RSI_{nday}"] = 100 - (100 / (1 + rs))
+    return df[f"RSI_{nday}"]
     
 def calculate_macd(df: pd, short_window: int = 12, long_window: int = 26, signal_window: int = 9):
     """Calculate the Moving Average Convergence Divergence (MACD) for stock prices."""
@@ -43,13 +48,15 @@ def calculate_atr(df: pd, nday: int):
     high_close = (df['High'] - df['Value'].shift()).abs()
     low_close = (df['Low'] - df['Value'].shift()).abs()
     true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
-    df[f"{nday}_ATR"] = true_range.rolling(window=nday).mean()
-    return df[f"{nday}_ATR"]
+    df[f"ATR_{nday}"] = true_range.rolling(window=nday).mean()
+    return df[f"ATR_{nday}"]
     
-def calculate_obv(df: pd):
+def calculate_obv(df: pd, nday: int = 20):
     """Calculate the On-Balance Volume (OBV) for stock prices."""
     obv = [0]
-    for i in range(1, len(df)):
+    for i in range(1, nday):
+        if len(df) < nday:
+            break
         if df['Value'][i] > df['Value'][i - 1]:
             obv.append(obv[-1] + df['Volume'][i])
         elif df['Value'][i] < df['Value'][i - 1]:
@@ -68,8 +75,8 @@ def calculate_cci(df: pd, nday: int):
     mad = tp.rolling(window=nday).apply(lambda x: np.mean(np.abs(x - np.mean(x))), raw=True)
     # avoid division by zero
     mad = mad.replace(0, np.nan)
-    df[f"{nday}_CCI"] = (tp - sma) / (0.015 * mad)
-    return df[f"{nday}_CCI"]
+    df[f"CCI_{nday}"] = (tp - sma) / (0.015 * mad)
+    return df[f"CCI_{nday}"]
     
 def calculate_adx(df: pd, nday: int):
     """Calculate the Average Directional Index (ADX) for stock prices."""
@@ -87,8 +94,8 @@ def calculate_adx(df: pd, nday: int):
     plus_di = 100 * (plus_dm.rolling(window=nday).mean() / atr)
     minus_di = 100 * (minus_dm.rolling(window=nday).mean() / atr)
     dx = (abs(plus_di - minus_di) / (plus_di + minus_di)) * 100
-    df[f"{nday}_ADX"] = dx.rolling(window=nday).mean()
-    return df[f"{nday}_ADX"]
+    df[f"ADX_{nday}"] = dx.rolling(window=nday).mean()
+    return df[f"ADX_{nday}"]
 
 def calculate_vwap(df: pd):
     """Calculate the Volume Weighted Average Price (VWAP) for stock prices."""
@@ -97,89 +104,8 @@ def calculate_vwap(df: pd):
     df['VWAP'] = cum_vol_price / cum_vol
     return df['VWAP']
 
-def calculate_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
-    """Calculate the Stop and Reverse (SAR) for stock prices."""
-    sar = df['Value'].astype(float).copy()
-    sar[:] = 0.0
-    up_trend = True
-    af = step
-    ep = df['Low'][0]
 
-    for i in range(1, len(df)):
-        if up_trend:
-            sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
-            if df['Low'][i] < sar[i]:
-                up_trend = False
-                sar[i] = ep
-                af = step
-                ep = df['High'][i]
-        else:
-            sar[i] = sar[i - 1] - af * (sar[i - 1] - ep)
-            if df['High'][i] > sar[i]:
-                up_trend = True
-                sar[i] = ep
-                af = step
-                ep = df['Low'][i]
-
-        if up_trend:
-            if df['High'][i] > ep:
-                ep = df['High'][i]
-                af = min(af + step, max_step)
-        else:
-            if df['Low'][i] < ep:
-                ep = df['Low'][i]
-                af = min(af + step, max_step)
-
-    df['SAR'] = sar
-    return df['SAR']
-
- 
-def calculate_momentum(df: pd, nday: int):
-    """Calculate the Momentum for stock prices."""
-    df[f"{nday}_Momentum"] = df['Value'] - df['Value'].shift(nday)
-    return df[f"{nday}_Momentum"]
-
-def calculate_rate_of_change(df: pd, nday: int):
-    """Calculate the Rate of Change (ROC) for stock prices."""
-    df[f"{nday}_ROC"] = ((df['Value'] - df['Value'].shift(nday)) / df['Value'].shift(nday)) * 100
-    return df[f"{nday}_ROC"]
-    
-def calculate_sma(df: pd, nday: int):
-    """Calculate the Simple Moving Average (SMA) for stock prices."""
-    df[f"{nday}_SMA"] = df['Value'].rolling(window=nday).mean()
-    return df[f"{nday}_SMA"]
-
-def calculate_ema(df: pd, nday: int):
-    """Calculate the Exponential Moving Average (EMA) for stock prices."""
-    df[f"{nday}_EMA"] = df['Value'].ewm(span=nday, adjust=False).mean()
-    return df[f"{nday}_EMA"]
-    
-def calculate_wma(df: pd, nday: int):
-    """Calculate the Weighted Moving Average (WMA) for stock prices."""
-    weights = pd.Series(range(1, nday + 1))
-    df[f"{nday}_WMA"] = df['Value'].rolling(window=nday).apply(lambda x: (x * weights).sum() / weights.sum(), raw=True)
-    return df[f"{nday}_WMA"]
-
-def calculate_hma(df: pd, nday: int):
-    """Calculate the Hull Moving Average (HMA) for stock prices."""
-    half_length = int(nday / 2)
-    sqrt_length = int(nday ** 0.5)
-
-    wma_half = calculate_wma(df, half_length)
-    wma_full = calculate_wma(df, nday)
-    diff_wma = 2 * wma_half - wma_full
-    df[f"{nday}_HMA"] = diff_wma.rolling(window=sqrt_length).apply(lambda x: (x * pd.Series(range(1, sqrt_length + 1))).sum() / pd.Series(range(1, sqrt_length + 1)).sum(), raw=True)
-    return df[f"{nday}_HMA"]
-    
-def calculate_keltner_channels(df: pd, nday: int, multiplier: float = 2.0):
-    """Calculate Keltner Channels for stock prices."""
-    ema = df['Value'].ewm(span=nday, adjust=False).mean()
-    atr = calculate_atr(df, nday)
-    df[f"{nday}_KC_upper"] = ema + (atr * multiplier)
-    df[f"{nday}_KC_lower"] = ema - (atr * multiplier)
-    return df[[f"{nday}_KC_upper", f"{nday}_KC_lower"]]
-    
-def calculate_paralolic_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
+def calculate_parabolic_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
     """Calculate the Parabolic SAR for stock prices."""
     psar = df['Value'].astype(float).copy()
     psar[:] = 0.0
@@ -214,6 +140,53 @@ def calculate_paralolic_sar(df: pd, step: float = 0.02, max_step: float = 0.2):
 
     df['PSAR'] = psar
     return df['PSAR']
+ 
+def calculate_momentum(df: pd, nday: int):
+    """Calculate the Momentum for stock prices."""
+    df[f"Momentum_{nday}"] = df['Value'] - df['Value'].shift(nday)
+    return df[f"Momentum_{nday}"]
+
+def calculate_rate_of_change(df: pd, nday: int):
+    """Calculate the Rate of Change (ROC) for stock prices."""
+    df[f"ROC_{nday}"] = ((df['Value'] - df['Value'].shift(nday)) / df['Value'].shift(nday)) * 100
+    return df[f"ROC_{nday}"]
+    
+def calculate_sma(df: pd, nday: int):
+    """Calculate the Simple Moving Average (SMA) for stock prices."""
+    df[f"SMA_{nday}"] = df['Value'].rolling(window=nday).mean()
+    return df[f"SMA_{nday}"]
+
+def calculate_ema(df: pd, nday: int):
+    """Calculate the Exponential Moving Average (EMA) for stock prices."""
+    df[f"EMA_{nday}"] = df['Value'].ewm(span=nday, adjust=False).mean()
+    return df[f"EMA_{nday}"]
+    
+def calculate_wma(df: pd, nday: int):
+    """Calculate the Weighted Moving Average (WMA) for stock prices."""
+    weights = pd.Series(range(1, nday + 1))
+    df[f"WMA_{nday}"] = df['Value'].rolling(window=nday).apply(lambda x: (x * weights).sum() / weights.sum(), raw=True)
+    return df[f"WMA_{nday}"]
+
+def calculate_hma(df: pd, nday: int):
+    """Calculate the Hull Moving Average (HMA) for stock prices."""
+    half_length = int(nday / 2)
+    sqrt_length = int(nday ** 0.5)
+
+    wma_half = calculate_wma(df, half_length)
+    wma_full = calculate_wma(df, nday)
+    diff_wma = 2 * wma_half - wma_full
+    df[f"HMA_{nday}"] = diff_wma.rolling(window=sqrt_length).apply(lambda x: (x * pd.Series(range(1, sqrt_length + 1))).sum() / pd.Series(range(1, sqrt_length + 1)).sum(), raw=True)
+    return df[f"HMA_{nday}"]
+    
+def calculate_keltner_channels(df: pd, nday: int, multiplier: float = 2.0):
+    """Calculate Keltner Channels for stock prices."""
+    ema = df['Value'].ewm(span=nday, adjust=False).mean()
+    atr = calculate_atr(df, nday)
+    df[f"KC_upper_{nday}"] = ema + (atr * multiplier)
+    df[f"KC_lower_{nday}"] = ema - (atr * multiplier)
+    return df[[f"KC_upper_{nday}", f"KC_lower_{nday}"]]
+    
+
 
 def calculate_typical_price(df: pd):
     """Calculate the Typical Price for stock prices."""
@@ -225,16 +198,11 @@ def calculate_weighted_close_price(df: pd):
     df['Weighted_Close_Price'] = (df['High'] + df['Low'] + (2 * df['Value'])) / 4
     return df['Weighted_Close_Price']
 
-def calculate_average_price(df: pd):
-    """Calculate the Average Price for stock prices."""
-    df['Average_Price'] = (df['High'] + df['Low'] + df['Value']) / 3
-    return df['Average_Price']
-    
 def calculate_price_volume_trend(df: pd):
     """Calculate the Price Volume Trend (PVT) for stock prices."""
     pvt = [0]
     for i in range(1, len(df)):
-        pvt_value = pvt[-1] + ((df['Value'][i] - df['Value'][i - 1]) / df['Value'][i - 1]) * df['Volume'][i]
+        pvt_value = pvt[i-1] + ((df['Value'][i] - df['Value'][i - 1]) / df['Value'][i - 1]) * df['Volume'][i]
         pvt.append(pvt_value)
     df['PVT'] = pvt
     return df['PVT']
@@ -252,9 +220,9 @@ def calculate_vortex_indicator(df: pd, nday: int):
     vip = vmp.rolling(window=nday).sum() / atr
     vin = vmm.rolling(window=nday).sum() / atr
 
-    df[f"{nday}_Vortex_Pos"] = vip
-    df[f"{nday}_Vortex_Neg"] = vin
-    return df[[f"{nday}_Vortex_Pos", f"{nday}_Vortex_Neg"]]
+    df[f"Vortex_Pos_{nday}"] = vip
+    df[f"Vortex_Neg_{nday}"] = vin
+    return df[[f"Vortex_Pos_{nday}", f"Vortex_Neg_{nday}"]]
     
 def calculate_ultimate_oscillator(df: pd, short_window: int = 7, mid_window: int = 14, long_window: int = 28):
     """Calculate the Ultimate Oscillator for stock prices."""
@@ -267,113 +235,113 @@ def calculate_ultimate_oscillator(df: pd, short_window: int = 7, mid_window: int
     avg14 = bp.rolling(window=mid_window).sum() / tr.rolling(window=mid_window).sum()
     avg28 = bp.rolling(window=long_window).sum() / tr.rolling(window=long_window).sum()
 
-    df['Ultimate_Oscillator'] = 100 * ((4 * avg7) + (2 * avg14) + avg28) / (4 + 2 + 1)
-    return df['Ultimate_Oscillator']
+    df[f"Ultimate_Oscillator_{short_window}_{mid_window}_{long_window}"] = 100 * ((4 * avg7) + (2 * avg14) + avg28) / (4 + 2 + 1)
+    return df[f"Ultimate_Oscillator_{short_window}_{mid_window}_{long_window}"]
     
 def calculate_chande_momentum_oscillator(df: pd, nday: int):
     """Calculate the Chande Momentum Oscillator (CMO) for stock prices."""
     delta = df['Value'].diff()
     gain = delta.where(delta > 0, 0).rolling(window=nday).sum()
     loss = -delta.where(delta < 0, 0).rolling(window=nday).sum()
-    df[f"{nday}_CMO"] = 100 * (gain - loss) / (gain + loss)
-    return df[f"{nday}_CMO"]
+    df[f"CMO_{nday}"] = 100 * (gain - loss) / (gain + loss)
+    return df[f"CMO_{nday}"]
     
 def calculate_donchian_channels(df: pd, nday: int):
     """Calculate Donchian Channels for stock prices."""
-    df[f"{nday}_DC_upper"] = df['High'].rolling(window=nday).max()
-    df[f"{nday}_DC_lower"] = df['Low'].rolling(window=nday).min()
-    return df[[f"{nday}_DC_upper", f"{nday}_DC_lower"]]
+    df[f"DC_upper_{nday}"] = df['High'].rolling(window=nday).max()
+    df[f"DC_lower_{nday}"] = df['Low'].rolling(window=nday).min()
+    return df[[f"DC_upper_{nday}", f"DC_lower_{nday}"]]
     
 def calculate_price_channel_index(df: pd, nday: int):
     """Calculate the Price Channel Index (PCI) for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PCI"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
-    return df[f"{nday}_PCI"]
+    df[f"PCI_{nday}"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
+    return df[f"PCI_{nday}"]
     
 def calculate_price_channel_breakout(df: pd, nday: int):
     """Calculate the Price Channel Breakout for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Breakout"] = 0
-    df.loc[df['Value'] > highest_high.shift(), f"{nday}_PC_Breakout"] = 1
-    df.loc[df['Value'] < lowest_low.shift(), f"{nday}_PC_Breakout"] = -1
-    return df[f"{nday}_PC_Breakout"]
+    df[f"PC_Breakout_{nday}"] = 0
+    df.loc[df['Value'] > highest_high.shift(), f"PC_Breakout_{nday}"] = 1
+    df.loc[df['Value'] < lowest_low.shift(), f"PC_Breakout_{nday}"] = -1
+    return df[f"PC_Breakout_{nday}"]
     
 def calculate_price_channel_trend(df: pd, nday: int):
     """Calculate the Price Channel Trend for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Trend"] = 0
-    df.loc[df['Value'] > highest_high.shift(), f"{nday}_PC_Trend"] = 1
-    df.loc[df['Value'] < lowest_low.shift(), f"{nday}_PC_Trend"] = -1
-    return df[f"{nday}_PC_Trend"]
+    df[f"PC_Trend_{nday}"] = 0
+    df.loc[df['Value'] > highest_high.shift(), f"PC_Trend_{nday}"] = 1
+    df.loc[df['Value'] < lowest_low.shift(), f"PC_Trend_{nday}"] = -1
+    return df[f"PC_Trend_{nday}"]
     
 def calculate_price_channel_strength(df: pd, nday: int):
     """Calculate the Price Channel Strength for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Strength"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
-    return df[f"{nday}_PC_Strength"]
+    df[f"PC_Strength_{nday}"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
+    return df[f"PC_Strength_{nday}"]
 
 def calculate_price_channel_momentum(df: pd, nday: int):
     """Calculate the Price Channel Momentum for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Momentum"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
-    return df[f"{nday}_PC_Momentum"]
+    df[f"PC_Momentum_{nday}"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
+    return df[f"PC_Momentum_{nday}"]
     
 def calculate_price_channel_volatility(df: pd, nday: int):
     """Calculate the Price Channel Volatility for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Volatility"] = (highest_high - lowest_low) / lowest_low * 100
-    return df[f"{nday}_PC_Volatility"]
+    df[f"PC_Volatility_{nday}"] = (highest_high - lowest_low) / lowest_low * 100
+    return df[f"PC_Volatility_{nday}"]
     
 def calculate_price_channel_average(df: pd, nday: int):
     """Calculate the Price Channel Average for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Average"] = (highest_high + lowest_low) / 2
-    return df[f"{nday}_PC_Average"]
+    df[f"PC_Average_{nday}"] = (highest_high + lowest_low) / 2
+    return df[f"PC_Average_{nday}"]
     
 def calculate_price_channel_range(df: pd, nday: int):
     """Calculate the Price Channel Range for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Range"] = highest_high - lowest_low
-    return df[f"{nday}_PC_Range"]
+    df[f"PC_Range_{nday}"] = highest_high - lowest_low
+    return df[f"PC_Range_{nday}"]
     
 def calculate_price_channel_width(df: pd, nday: int):
     """Calculate the Price Channel Width for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Width"] = (highest_high - lowest_low) / lowest_low * 100
-    return df[f"{nday}_PC_Width"]
+    df[f"PC_Width_{nday}"] = (highest_high - lowest_low) / lowest_low * 100
+    return df[f"PC_Width_{nday}"]
     
 def calculate_price_channel_breakdown(df: pd, nday: int):
     """Calculate the Price Channel Breakdown for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Breakdown"] = 0
-    df.loc[df['Value'] < lowest_low.shift(), f"{nday}_PC_Breakdown"] = -1
-    return df[f"{nday}_PC_Breakdown"]
+    df[f"PC_Breakdown_{nday}"] = 0
+    df.loc[df['Value'] < lowest_low.shift(), f"PC_Breakdown_{nday}"] = -1
+    return df[f"PC_Breakdown_{nday}"]
 
 def calculate_price_channel_pullback(df: pd, nday: int):
     """Calculate the Price Channel Pullback for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Pullback"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
-    return df[f"{nday}_PC_Pullback"]
+    df[f"PC_Pullback_{nday}"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
+    return df[f"PC_Pullback_{nday}"]
 
 def calculate_price_channel_reversal(df: pd, nday: int):
     """Calculate the Price Channel Reversal for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_PC_Reversal"] = 0
-    df.loc[df['Value'] < lowest_low.shift(), f"{nday}_PC_Reversal"] = -1
-    df.loc[df['Value'] > highest_high.shift(), f"{nday}_PC_Reversal"] = 1
-    return df[f"{nday}_PC_Reversal"]
+    df[f"PC_Reversal_{nday}"] = 0
+    df.loc[df['Value'] < lowest_low.shift(), f"PC_Reversal_{nday}"] = -1
+    df.loc[df['Value'] > highest_high.shift(), f"PC_Reversal_{nday}"] = 1
+    return df[f"PC_Reversal_{nday}"]
     
 def calculate_coppock_curve(df: pd, nday1: int = 14, nday2: int = 11, nday3: int = 10):
     """Calculate the Coppock Curve for stock prices."""
@@ -395,9 +363,9 @@ def calculate_price_chanbdons(df: pd, nday: int):
     rolling_mean = df['Value'].rolling(window=nday).mean()
     rolling_std = df['Value'].rolling(window=nday).std()
 
-    df[f"{nday}_PCD_upper"] = rolling_mean + (rolling_std * 2)
-    df[f"{nday}_PCD_lower"] = rolling_mean - (rolling_std * 2)
-    return df[[f"{nday}_PCD_upper", f"{nday}_PCD_lower"]]
+    df[f"PCD_upper_{nday}"] = rolling_mean + (rolling_std * 2)
+    df[f"PCD_lower_{nday}"] = rolling_mean - (rolling_std * 2)
+    return df[[f"PCD_upper_{nday}", f"PCD_lower_{nday}"]]
     
 def calculate_chaikin_oscillator(df: pd, short_window: int = 3, long_window: int = 10):
     """Calculate the Chaikin Oscillator for stock prices."""
@@ -413,9 +381,9 @@ def calculate_aroon_indicator(df: pd, nday: int):
     rolling_max = df['High'].rolling(window=nday).apply(lambda x: x.argmax(), raw=True)
     rolling_min = df['Low'].rolling(window=nday).apply(lambda x: x.argmin(), raw=True)
 
-    df[f"{nday}_Aroon_Up"] = 100 * (nday - rolling_max) / nday
-    df[f"{nday}_Aroon_Down"] = 100 * (nday - rolling_min) / nday
-    return df[[f"{nday}_Aroon_Up", f"{nday}_Aroon_Down"]]
+    df[f"Aroon_Up_{nday}"] = 100 * (nday - rolling_max) / nday
+    df[f"Aroon_Down_{nday}"] = 100 * (nday - rolling_min) / nday
+    return df[[f"Aroon_Up_{nday}", f"Aroon_Down_{nday}"]]
     
 def calculate_money_flow_index(df: pd, nday: int):
     """Calculate the Money Flow Index (MFI) for stock prices."""
@@ -424,56 +392,34 @@ def calculate_money_flow_index(df: pd, nday: int):
     positive_flow = money_flow.where(tp > tp.shift(), 0).rolling(window=nday).sum()
     negative_flow = money_flow.where(tp < tp.shift(), 0).rolling(window=nday).sum()
     money_ratio = positive_flow / negative_flow
-    df[f"{nday}_MFI"] = 100 - (100 / (1 + money_ratio))
-    return df[f"{nday}_MFI"]
+    df[f"MFI_{nday}"] = 100 - (100 / (1 + money_ratio))
+    return df[f"MFI_{nday}"]
     
 def calculate_force_index(df: pd, nday: int):
     """Calculate the Force Index for stock prices."""
     fi = (df['Value'] - df['Value'].shift()) * df['Volume']
-    df[f"{nday}_Force_Index"] = fi.rolling(window=nday).mean()
-    return df[f"{nday}_Force_Index"]
+    df[f"FI_{nday}"] = fi.rolling(window=nday).mean()
+    return df[f"FI_{nday}"]
     
 def calculate_ease_of_movement(df: pd, nday: int):
     """Calculate the Ease of Movement (EOM) for stock prices."""
     distance_moved = ((df['High'] + df['Low']) / 2) - ((df['High'].shift() + df['Low'].shift()) / 2)
     box_ratio = df['Volume'] / (df['High'] - df['Low'])
     eom = distance_moved / box_ratio
-    df[f"{nday}_EOM"] = eom.rolling(window=nday).mean()
-    return df[f"{nday}_EOM"]
-
-def calculate_volume_price_trend(df: pd):
-    """Calculate the Volume Price Trend (VPT) for stock prices."""
-    vpt = [0]
-    for i in range(1, len(df)):
-        vpt_value = vpt[-1] + ((df['Value'][i] - df['Value'][i - 1]) / df['Value'][i - 1]) * df['Volume'][i]
-        vpt.append(vpt_value)
-    df['VPT'] = vpt
-    return df['VPT']
-
-def calculate_on_balance_volume(df: pd):
-    """Calculate the On-Balance Volume (OBV) for stock prices."""
-    obv = [0]
-    for i in range(1, len(df)):
-        if df['Value'][i] > df['Value'][i - 1]:
-            obv.append(obv[-1] + df['Volume'][i])
-        elif df['Value'][i] < df['Value'][i - 1]:
-            obv.append(obv[-1] - df['Volume'][i])
-        else:
-            obv.append(obv[-1])
-    df['OBV'] = obv
-    return df['OBV']
+    df[f"EOM_{nday}"] = eom.rolling(window=nday).mean()
+    return df[f"EOM_{nday}"]
 
 def calculate_volume_rate_of_change(df: pd, nday: int):
     """Calculate the Volume Rate of Change (VROC) for stock prices."""
-    df[f"{nday}_VROC"] = ((df['Volume'] - df['Volume'].shift(nday)) / df['Volume'].shift(nday)) * 100
-    return df[f"{nday}_VROC"]
+    df[f"VROC_{nday}"] = ((df['Volume'] - df['Volume'].shift(nday)) / df['Volume'].shift(nday)) * 100
+    return df[f"VROC_{nday}"]
     
 def calculate_money_flow_volume(df: pd, nday: int):
     """Calculate the Money Flow Volume (MFV) for stock prices."""
     tp = (df['High'] + df['Low'] + df['Value']) / 3
     mfv = tp * df['Volume']
-    df[f"{nday}_MFV"] = mfv.rolling(window=nday).sum()
-    return df[f"{nday}_MFV"]
+    df[f"MFV_{nday}"] = mfv.rolling(window=nday).sum()
+    return df[f"MFV_{nday}"]
 
 def calculate_accumulation_distribution(df: pd):
     """Calculate the Accumulation/Distribution Line for stock prices."""
@@ -481,6 +427,14 @@ def calculate_accumulation_distribution(df: pd):
     mfv = mfm * df['Volume']
     df['A/D_Line'] = mfv.cumsum()
     return df['A/D_Line']
+
+def calculate_accumulation_distribution_oscillator(df: pd, short_window: int = 3, long_window: int = 10):
+    """Calculate the Accumulation/Distribution Oscillator for stock prices."""
+    adl = calculate_accumulation_distribution(df)
+    ema_short = adl.ewm(span=short_window, adjust=False).mean()
+    ema_long = adl.ewm(span=long_window, adjust=False).mean()
+    df['A/D_Oscillator'] = ema_short - ema_long
+    return df['A/D_Oscillator']
 
 def calculate_mass_index(df: pd, nday: int = 25, ema_period: int = 9):
     """Calculate the Mass Index for stock prices."""
@@ -503,10 +457,10 @@ def calculate_intraday_momentum_index(df: pd, nday: int = 14):
     avg_down_loss = down_loss.rolling(window=nday).mean()
 
     imi = 100 * (avg_up_gain / (avg_up_gain + avg_down_loss))
-    df[f"{nday}_IMI"] = imi
-    return df[f"{nday}_IMI"]
+    df[f"IMI_{nday}"] = imi
+    return df[f"IMI_{nday}"]
 
-def calculate_true_strength_index(df: pd, short_window: int = 25, long_window: int = 13):
+def calculate_true_strength_index(df: pd, short_window: int = 13, long_window: int = 25, signal_window: int = 7):
     """Calculate the True Strength Index (TSI) for stock prices."""
     delta = df['Value'].diff()
     abs_delta = delta.abs()
@@ -518,13 +472,14 @@ def calculate_true_strength_index(df: pd, short_window: int = 25, long_window: i
     abs_ema2 = abs_ema1.ewm(span=short_window, adjust=False).mean()
 
     df['TSI'] = 100 * (ema2 / abs_ema2)
-    return df['TSI']
+    df['TSI_signal'] = df['TSI'].ewm(span=signal_window, adjust=False).mean()
+    return df[['TSI', 'TSI_signal']]
     
 def calculate_dpo(df: pd, nday: int):
     """Calculate the Detrended Price Oscillator (DPO) for stock prices."""
     sma = df['Value'].rolling(window=nday).mean()
-    df[f"{nday}_DPO"] = df['Value'] - sma.shift(int(nday / 2) + 1)
-    return df[f"{nday}_DPO"]
+    df[f"DPO_{nday}"] = df['Value'] - sma.shift(int(nday / 2) + 1)
+    return df[f"DPO_{nday}"]
     
 def calculate_klinger_oscillator(df: pd, short_window: int = 34, long_window: int = 55, signal_window: int = 13):
     """Calculate the Klinger Oscillator for stock prices."""
@@ -532,18 +487,27 @@ def calculate_klinger_oscillator(df: pd, short_window: int = 34, long_window: in
     vol = df['Volume']
     cf = ((tp - tp.shift()) * vol).fillna(0)
 
-    df['KVO'] = cf.ewm(span=short_window, adjust=False).mean() - cf.ewm(span=long_window, adjust=False).mean()
-    df['KVO_signal'] = df['KVO'].ewm(span=signal_window, adjust=False).mean()
-    return df[['KVO', 'KVO_signal']]
+    df['Klinger_OC'] = cf.ewm(span=short_window, adjust=False).mean() - cf.ewm(span=long_window, adjust=False).mean()
+    df['Klinger_OC_signal'] = df['Klinger_OC'].ewm(span=signal_window, adjust=False).mean()
+    return df[['Klinger_OC', 'Klinger_OC_signal']]
 
-def calculate_ulcer_index(df: pd, nday: int):
-    """Calculate the Ulcer Index for stock prices."""
-    rolling_max = df['Value'].rolling(window=nday).max()
-    drawdown = (df['Value'] - rolling_max) / rolling_max * 100
-    squared_drawdown = drawdown ** 2
-    df[f"{nday}_Ulcer_Index"] = (squared_drawdown.rolling(window=nday).mean()) ** 0.5
-    return df[f"{nday}_Ulcer_Index"]
-    
+
+'''
+Choppiness Index Trading의 핵심 활용법
+1.추세 매매 필터 (가장 중요)
+CHO < 38.2
+→ 추세 전략 허용 (돌파, 눌림)
+CHO > 61.8
+→ 추세 전략 중단
+손실의 상당 부분은 횡보장에서 발생
+→ 이를 걸러내는 데 최적
+
+2. 횡보 → 추세 전환 탐지
+CHO가 고점(>61.8)에서 하락 전환
+→ 에너지 축적 후 추세 시작 가능성
+
+이때 가격 돌파와 결합하면 신뢰도 상승
+'''
 def calculate_choppiness_index(df: pd, nday: int):
     """Calculate the Choppiness Index for stock prices."""
     tr = pd.concat([df['High'] - df['Low'], 
@@ -552,16 +516,70 @@ def calculate_choppiness_index(df: pd, nday: int):
     atr = tr.rolling(window=nday).sum()
     high_low_range = df['High'].rolling(window=nday).max() - df['Low'].rolling(window=nday).min()
     ci = 100 * np.log10(atr / high_low_range) / np.log10(nday)
-    df[f"{nday}_Choppiness_Index"] = ci
-    return df[f"{nday}_Choppiness_Index"]
+    df[f"Choppiness_Index_{nday}"] = ci
+    return df[f"Choppiness_Index_{nday}"]
     
+'''
+Gopalakrishnan Range Index Trading의 활용법
+① 추세 품질 평가
+
+가격 상승 + GRI 완만
+→ 건강한 추세
+
+가격 상승 + GRI 급등
+→ 과열 가능성
+
+② 돌파 필터
+
+장기간 낮은 GRI
+→ 에너지 축적
+
+이후 GRI 상승 + 가격 돌파
+→ 신뢰도 높은 브레이크아웃
+
+③ 리스크 관리
+
+GRI 급등 구간
+→ 포지션 축소
+
+변동성 폭발 구간 회피
+'''
 def calculate_gopalakrishnan_range_index(df: pd, nday: int):
     """Calculate the Gopalakrishnan Range Index (GAPO) for stock prices."""
     high_low_range = df['High'].rolling(window=nday).max() - df['Low'].rolling(window=nday).min()
     gapo = np.log10(high_low_range) / np.log10(nday)
-    df[f"{nday}_GAPO"] = gapo
-    return df[f"{nday}_GAPO"]
+    df[f"GAPO_{nday}"] = gapo
+    return df[f"GAPO_{nday}"]
 
+
+'''
+3. Hurst Exponent Trading의 핵심 활용
+① 전략 선택 필터 (가장 중요)
+
+H > 0.55
+→ 추세 추종, 돌파, 모멘텀 전략
+
+H < 0.45
+→ 평균회귀, 밴드 트레이딩
+
+0.45 ~ 0.55
+→ 관망 또는 포지션 축소
+
+👉 잘못된 전략을 쓰는 것 자체를 방지
+
+② 국면 전환 탐지
+
+H가 0.5 아래 → 위로 상승
+→ 횡보/회귀 → 추세 국면 진입 가능
+
+H가 0.5 위 → 아래로 하락
+→ 추세 소멸
+
+③ 다중 타임프레임
+
+장기 H > 0.5, 단기 H < 0.5
+→ 조정 후 재추세 가능성
+'''
 def calculate_hurst_exponent(df: pd, max_lag: int = 20):
     """Calculate the Hurst Exponent for stock prices."""
     lags = range(2, max_lag)
@@ -571,13 +589,41 @@ def calculate_hurst_exponent(df: pd, max_lag: int = 20):
     df['Hurst_Exponent'] = hurst_exponent
     return df['Hurst_Exponent']
 
+'''
+3. Fractal Dimension Trading의 핵심 활용
+① 전략 선택 필터 (가장 중요)
+FD 값	시장 성격	적합 전략
+FD < 1.3	강한 추세	추세 추종
+1.3 ~ 1.5	약한 추세	신중
+FD > 1.5	횡보·혼돈	평균회귀
+FD > 1.7	무작위	관망
+② 국면 전환 탐지
+
+FD 하락 → 질서 증가 → 추세 형성
+
+FD 상승 → 추세 붕괴 → 횡보
+
+③ 포지션 사이징
+
+FD 낮음 → 공격적
+
+FD 높음 → 축소
+'''
 def calculate_fractal_dimension(df: pd, nday: int):
     """Calculate the Fractal Dimension for stock prices."""
     high_low_range = df['High'].rolling(window=nday).max() - df['Low'].rolling(window=nday).min()
     length = np.log(high_low_range).rolling(window=nday).sum()
     fd = 2 - (length / np.log(nday))
-    df[f"{nday}_Fractal_Dimension"] = fd
-    return df[f"{nday}_Fractal_Dimension"]
+    df[f"Fractal_Dimension_{nday}"] = fd
+    return df[f"Fractal_Dimension_{nday}"]
+
+def calculate_polarized_fractal_efficiency_index(df: pd, nday: int):
+    """Calculate the Polarized Fractal Efficiency Index (PFE) for stock prices."""
+    direction = df['Value'] - df['Value'].shift(nday)
+    distance = np.sqrt((df['Value'] - df['Value'].shift(nday))**2 + (nday)**2)
+    pfe = (direction / distance) * 100
+    df[f"PFE_{nday}"] = pfe
+    return df[f"PFE_{nday}"]
 
 def calculate_fibonacci_retracement_levels(df: pd):
     """Calculate Fibonacci Retracement Levels for stock prices."""
@@ -620,8 +666,8 @@ def calculate_trix(df: pd, nday: int):
     ema1 = df['Value'].ewm(span=nday, adjust=False).mean()
     ema2 = ema1.ewm(span=nday, adjust=False).mean()
     ema3 = ema2.ewm(span=nday, adjust=False).mean()
-    df[f"{nday}_TRIX"] = ema3.pct_change() * 100
-    return df[f"{nday}_TRIX"]
+    df[f"TRIX_{nday}"] = ema3.pct_change() * 100
+    return df[f"TRIX_{nday}"]
 
 def calculate_dmi(df: pd, nday: int):
     """Calculate the Directional Movement Index (DMI) for stock prices."""
@@ -638,10 +684,46 @@ def calculate_dmi(df: pd, nday: int):
     atr = true_range.rolling(window=nday).mean()
     plus_di = 100 * (plus_dm.rolling(window=nday).mean() / atr)
     minus_di = 100 * (minus_dm.rolling(window=nday).mean() / atr)
-    df[f"{nday}_DMI_Plus"] = plus_di
-    df[f"{nday}_DMI_Minus"] = minus_di
-    return df[[f"{nday}_DMI_Plus", f"{nday}_DMI_Minus"]]
+    df[f"DMI_Plus_{nday}"] = plus_di
+    df[f"DMI_Minus_{nday}"] = minus_di
+    return df[[f"DMI_Plus_{nday}", f"DMI_Minus_{nday}"]]
 
+
+'''
+3. 핵심 해석 방법
+① SOBV의 기울기(slope)
+
+상승 기울기
+→ 장기 자금 유입 (매집 국면)
+
+하락 기울기
+→ 장기 자금 유출 (분배 국면)
+
+👉 값의 절대 수준보다 방향과 곡률이 중요
+
+② 가격과의 구조적 괴리
+
+가격 횡보 + SOBV 상승
+→ 보이지 않는 매집
+
+가격 상승 + SOBV 하락
+→ 분배 가능성
+
+③ 장기 다이버전스
+
+가격 신고가 + SOBV 저점 하락
+→ 중·장기 약세 경고
+
+가격 신저가 + SOBV 상승
+→ 장기 바닥 형성 가능성
+
+4. 실전 매매에서의 활용 방식
+① 방향 필터 (가장 중요)
+
+SOBV 상승 구간에서만 매수 전략
+
+SOBV 하락 구간에서만 매도/관망
+'''
 def calculate_sumation_of_obv(df: pd):
     """Calculate the Summation of On-Balance Volume (OBV) for stock prices."""
     obv = [0]
@@ -655,6 +737,7 @@ def calculate_sumation_of_obv(df: pd):
     df['OBV'] = obv
     df['Sumation_OBV'] = df['OBV'].cumsum()
     return df['Sumation_OBV']
+
 def calculate_supertrend_indicator(df: pd, nday: int = 10, multiplier: float = 3.0):
     """Calculate the Supertrend Indicator for stock prices."""
     atr = calculate_atr(df, nday)
@@ -683,27 +766,26 @@ def calculate_supertrend_indicator(df: pd, nday: int = 10, multiplier: float = 3
             else:
                 supertrend[i] = upperband[i] if upperband[i] < supertrend[i - 1] else supertrend[i - 1]
 
-    df[f"{nday}_Supertrend"] = supertrend
-    return df[f"{nday}_Supertrend"]
+    df[f"Supertrend_{nday}"] = supertrend
+    return df[f"Supertrend_{nday}"]
 
 def calculate_williams_percent_r(df: pd, nday: int):
     """Calculate the Williams %R for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_Williams_%R"] = -100 * (highest_high - df['Value']) / (highest_high - lowest_low)
-    return df[f"{nday}_Williams_%R"]
+    df[f"WPR_{nday}"] = -100 * (highest_high - df['Value']) / (highest_high - lowest_low)
+    return df[f"WPR_{nday}"]
 
 def calculate_elder_ray_index(df: pd, nday: int):
     """Calculate the Elder-Ray Index for stock prices."""
     ema = df['Value'].ewm(span=nday, adjust=False).mean()
     bull_power = df['High'] - ema
     bear_power = df['Low'] - ema
-    df[f"{nday}_Elder_Bull_Power"] = bull_power
-    df[f"{nday}_Elder_Bear_Power"] = bear_power
-    return df[[f"{nday}_Elder_Bull_Power", f"{nday}_Elder_Bear_Power"]]
+    df[f"ERay_Bull_{nday}"] = bull_power
+    df[f"ERay_Bear_{nday}"] = bear_power
+    return df[[f"ERay_Bull_{nday}", f"ERay_Bear_{nday}"]]
 
 def calculate_ichimoku_cloud(df: pd):
-    """Calculate the Ichimoku Cloud for stock prices."""
     high_9 = df['High'].rolling(window=9).max()
     low_9 = df['Low'].rolling(window=9).min()
     df['Tenkan_Sen'] = (high_9 + low_9) / 2
@@ -717,17 +799,24 @@ def calculate_ichimoku_cloud(df: pd):
     high_52 = df['High'].rolling(window=52).max()
     low_52 = df['Low'].rolling(window=52).min()
     df['Senkou_Span_B'] = ((high_52 + low_52) / 2).shift(26)
-
-    df['Chikou_Span'] = df['Value'].shift(-26)
+    df['Chikou_Span'] = df['Value'].shift(26)
 
     return df[['Tenkan_Sen', 'Kijun_Sen', 'Senkou_Span_A', 'Senkou_Span_B', 'Chikou_Span']]
 
-def calculate_price_envelope(df: pd, nday: int, percent: float = 0.025):
-    """Calculate Price Envelopes for stock prices."""
+
+'''
+how to set the parmeters for Price Envelopes Trading
+이동 평균은 13을 권장
+5분 차트 기준 : envelope 퍼센트 0.3% 권장
+1시간 차트 기준 : envelope 퍼센트 0.8% 권장
+1일 차트 기준 : envelope 퍼센트 2.0% 권장
+1주 차트 기준 : envelope 퍼센트 10% 권장
+'''
+def calculate_price_envelope(df: pd, nday: int, percent: float = 0.02):
     sma = df['Value'].rolling(window=nday).mean()
-    df[f"{nday}_Price_Envelope_Upper"] = sma * (1 + percent)
-    df[f"{nday}_Price_Envelope_Lower"] = sma * (1 - percent)
-    return df[[f"{nday}_Price_Envelope_Upper", f"{nday}_Price_Envelope_Lower"]]
+    df[f"Envelope_Upper_{nday}"] = sma * (1 + percent)
+    df[f"Envelope_Lower_{nday}"] = sma * (1 - percent)
+    return df[[f"Envelope_Upper_{nday}", f"Envelope_Lower_{nday}"]]
 
 def calculate_gann_fan(df: pd):
     """Calculate Gann Fan lines for stock prices."""
@@ -812,43 +901,106 @@ def calculate_gann_high_low_oscillator(df: pd, nday: int):
     """Calculate the Gann High-Low Oscillator for stock prices."""
     highest_high = df['High'].rolling(window=nday).max()
     lowest_low = df['Low'].rolling(window=nday).min()
-    df[f"{nday}_Gann_HL_Oscillator"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
-    return df[f"{nday}_Gann_HL_Oscillator"]
+    df[f"Gann_HL_Oscillator_{nday}"] = (df['Value'] - lowest_low) / (highest_high - lowest_low) * 100
+    return df[f"Gann_HL_Oscillator_{nday}"]
 
-def calculate_hull_moving_average(df: pd, nday: int):
-    """Calculate the Hull Moving Average (HMA) for stock prices."""
-    half_length = int(nday / 2)
-    sqrt_length = int(np.sqrt(nday))
+def calculate_Smoothed_Moving_Average(df: pd, nday: int):
+    """Calculate the Smoothed Moving Average (SMMA) for stock prices."""
+    smma = df['Value'].astype(float).copy()
+    for i in range(1, len(df)):
+        smma[i] = (smma[i - 1] * (nday - 1) + df['Value'][i]) / nday
+    df[f"SMMA_{nday}"] = smma
+    return df[f"SMMA_{nday}"]
 
-    wma_half = df['Value'].rolling(window=half_length).apply(lambda x: np.sum((np.arange(1, half_length + 1) * x)) / np.sum(np.arange(1, half_length + 1)), raw=True)
-    wma_full = df['Value'].rolling(window=nday).apply(lambda x: np.sum((np.arange(1, nday + 1) * x)) / np.sum(np.arange(1, nday + 1)), raw=True)
+def calculate_Kaufman_Adaptive_Moving_Average(df: pd, nday: int = 10, fast_ema: int = 2, slow_ema: int = 30):
+    """Calculate the Kaufman Adaptive Moving Average (KAMA) for stock prices."""
+    change = df['Value'].diff().abs()
+    volatility = df['Value'].diff().abs().rolling(window=nday).sum()
 
-    hma = (2 * wma_half) - wma_full
-    df[f"{nday}_HMA"] = hma.rolling(window=sqrt_length).apply(lambda x: np.sum((np.arange(1, sqrt_length + 1) * x)) / np.sum(np.arange(1, sqrt_length + 1)), raw=True)
-    return df[f"{nday}_HMA"]
+    efficiency_ratio = change / volatility
+    smoothing_constant = (efficiency_ratio * (2 / (fast_ema + 1) - 2 / (slow_ema + 1)) + 2 / (slow_ema + 1)) ** 2
+
+    kama = df['Value'].astype(float).copy()
+    for i in range(1, len(df)):
+        if i < nday:
+            continue
+        kama[i] = kama[i - 1] + smoothing_constant[i] * (df['Value'][i] - kama[i - 1])
+    df[f"KAMA_{nday}"] = kama
+    return df[f"KAMA_{nday}"]
+
+def calculate_Tema(df: pd, nday: int = 20):
+    """Calculate the Triple Exponential Moving Average (TEMA) for stock prices."""
+    ema1 = df['Value'].ewm(span=nday, adjust=False).mean()
+    ema2 = ema1.ewm(span=nday, adjust=False).mean()
+    ema3 = ema2.ewm(span=nday, adjust=False).mean()
+    df[f"TEMA_{nday}"] = (3 * ema1) - (3 * ema2) + ema3
+    return df[f"TEMA_{nday}"]
+
+def calculate_vidya(df: pd, nday: int = 9, fast_ema: int = 2, slow_ema: int = 30):
+    """Calculate the Variable Index Dynamic Average (VIDYA) for stock prices using CMO-based smoothing."""
+    values = df['Value'].astype(float).values
+    vidya = np.full_like(values, np.nan, dtype=float)
+    cmo = np.zeros_like(values, dtype=float)
+    n = nday
+    base_smoothing = 2 / (n + 1)
     
+    if len(values) < n:
+        return pd.Series(vidya, index=df.index, name=f"VIDYA_{nday}")
+
+    # CMO 계산
+    for i in range(n, len(values)):
+        up = 0.0
+        down = 0.0
+        for j in range(i - n + 1, i + 1):
+            diff = values[j] - values[j - 1]
+            if diff > 0:
+                up += diff
+            else:
+                down -= diff
+        denom = up + down
+        cmo[i] = ((up - down) / denom) * 100 if denom != 0 else 0.0
+
+    # VIDYA 계산
+    vidya[n - 1] = np.mean(values[:n])  # 초기값: n일 SMA
+    for i in range(n, len(values)):
+        alpha = base_smoothing * abs(cmo[i]) / 100
+        vidya[i] = (1 - alpha) * vidya[i - 1] + alpha * values[i]
+
+    df[f"VIDYA_{nday}"] = vidya
+    return df[f"VIDYA_{nday}"]
 
 def calculate_all_indicators(df: pd):
     """Calculate all technical indicators for stock prices."""
     indicators = {}
     indicators['SMA5'] = calculate_sma(df, nday=5)
     indicators['SMA20'] = calculate_sma(df, nday=20)
+    indicators['SMA30'] = calculate_sma(df, nday=30)
     indicators['SMA60'] = calculate_sma(df, nday=60)
     indicators['SMA120'] = calculate_sma(df, nday=120)
-    indicators['EMA'] = calculate_ema(df, nday=20)
-    indicators['WMA'] = calculate_wma(df, nday=20)
+    indicators['SMA200'] = calculate_sma(df, nday=200)
+    indicators['EMA5'] = calculate_ema(df, nday=5)
+    indicators['EMA20'] = calculate_ema(df, nday=20)
+    indicators['EMA60'] = calculate_ema(df, nday=60)
+    indicators['EMA200'] = calculate_ema(df, nday=200)
+    indicators['EMA12'] = calculate_ema(df, nday=12)
+    indicators['EMA26'] = calculate_ema(df, nday=26)
+    indicators['WMA5'] = calculate_wma(df, nday=5)
+    indicators['WMA14'] = calculate_wma(df, nday=14)
+    indicators['WMA20'] = calculate_wma(df, nday=20)
     indicators['RSI'] = calculate_rsi(df, nday=14)
     indicators['VWAP'] = calculate_vwap(df)
     indicators['MACD'] = calculate_macd(df)
-    indicators['Bollinger_Bands'] = calculate_bollinger_bands(df, nday=20)
-    indicators['Keltener_Channels'] = calculate_keltner_channels(df, nday=20)   
-    indicators['ATR'] = calculate_atr(df, nday=14)
+    indicators['Bollinger_Bands20'] = calculate_bollinger_bands(df, nday=20)
+    indicators['Bollinger_Bands30'] = calculate_bollinger_bands(df, nday=30)
+    indicators['Keltner_Channels20'] = calculate_keltner_channels(df, nday=20)
+    indicators['Keltner_Channels30'] = calculate_keltner_channels(df, nday=30)   
+    indicators['ATR14'] = calculate_atr(df, nday=14)
     indicators['Stochastic_Oscillator'] = calculate_stochastic_oscillator(df, k_window=14, d_window=3)
     indicators['CCI'] = calculate_cci(df, nday=20)
     indicators['ADX'] = calculate_adx(df, nday=14)
-    indicators['SAR'] = calculate_sar(df)
-    indicators['Parabolic_SAR'] = calculate_paralolic_sar(df)
+    indicators['PSAR'] = calculate_parabolic_sar(df)
     indicators['Momentum'] = calculate_momentum(df, nday=10)
+    indicators['ROC'] = calculate_rate_of_change(df, nday=12)
     indicators['Vortex'] = calculate_vortex_indicator(df, nday=14)
     indicators['Ultimate_Oscillator'] = calculate_ultimate_oscillator(df)
     indicators['Chande_Momentum_Oscillator'] = calculate_chande_momentum_oscillator(df, nday=14)
@@ -871,30 +1023,33 @@ def calculate_all_indicators(df: pd):
     indicators['Chaikin_Oscillator'] = calculate_chaikin_oscillator(df)
     indicators['Aroon_Indicator'] = calculate_aroon_indicator(df, nday=14)
     indicators['Money_Flow_Index'] = calculate_money_flow_index(df, nday=14)
-    indicators['Force_Index'] = calculate_force_index(df, nday=13)
+    indicators['FI_7'] = calculate_force_index(df, nday=7)
+    indicators['FI_13'] = calculate_force_index(df, nday=13)
+    indicators['FI_14'] = calculate_force_index(df, nday=14)
     indicators['Ease_of_Movement'] = calculate_ease_of_movement(df, nday=14)
-    indicators['Volume_Price_Trend'] = calculate_price_volume_trend(df)
-    indicators['On_Balance_Volume'] = calculate_on_balance_volume(df)
-    indicators['Volume_Rate_of_Change'] = calculate_volume_rate_of_change(df, nday=12)
-    indicators['Money_Flow_Volume'] = calculate_money_flow_volume(df, nday=14)
-    indicators['Accumulation_Distribution'] = calculate_accumulation_distribution(df)
+    indicators['VROC_7'] = calculate_volume_rate_of_change(df, nday=7)
+    indicators['VROC_12'] = calculate_volume_rate_of_change(df, nday=12)
+    indicators['VROC_14'] = calculate_volume_rate_of_change(df, nday=14)
+    indicators['MFV_7'] = calculate_money_flow_volume(df, nday=7)
+    indicators['MFV_14'] = calculate_money_flow_volume(df, nday=14)
+    indicators['AD_Oscillator_3_10'] = calculate_accumulation_distribution_oscillator(df, short_window=3, long_window=10)
     indicators['Mass_Index'] = calculate_mass_index(df)
     indicators['Intraday_Momentum_Index'] = calculate_intraday_momentum_index(df)
     indicators['True_Strength_Index'] = calculate_true_strength_index(df)
     indicators['DPO'] = calculate_dpo(df, nday=20)
     indicators['Klinger_Oscillator'] = calculate_klinger_oscillator(df)
-    indicators['Ulcer_Index'] = calculate_ulcer_index(df, nday=14)
     indicators['Choppiness_Index'] = calculate_choppiness_index(df, nday=14)
     indicators['GAPO'] = calculate_gopalakrishnan_range_index(df, nday=14)
     indicators['Hurst_Exponent'] = calculate_hurst_exponent(df)
     indicators['Fractal_Dimension'] = calculate_fractal_dimension(df, nday=14)
+    indicators['PFE'] = calculate_polarized_fractal_efficiency_index(df, nday=10)
     indicators['Fibonacci_Retracement_Levels'] = calculate_fibonacci_retracement_levels(df)
     indicators['Pivot_Points'] = calculate_pivot_points(df)
-    indicators['TRIX'] = calculate_trix(df, nday=15)
+    indicators['TRIX'] = calculate_trix(df, nday=12)
     indicators['DMI'] = calculate_dmi(df, nday=14)
     indicators['Sumation_of_OBV'] = calculate_sumation_of_obv(df)
     indicators['Supertrend_Indicator'] = calculate_supertrend_indicator(df, nday=10, multiplier=3.0)
-    indicators['Williams_%R'] = calculate_williams_percent_r(df, nday=14)
+    indicators['Williams_PR'] = calculate_williams_percent_r(df, nday=14)
     indicators['Elder_Ray_Index'] = calculate_elder_ray_index(df, nday=13)
     indicators['Ichimoku_Cloud'] = calculate_ichimoku_cloud(df)
     indicators['Price_Envelope'] = calculate_price_envelope(df, nday=20, percent=0.025)
@@ -905,10 +1060,16 @@ def calculate_all_indicators(df: pd):
     indicators['Gann_Time_Cycles'] = calculate_gann_time_cycles(df, cycle_length=30)
     indicators['Gann_Angles'] = calculate_gann_angles(df, angle_degrees=45)
     indicators['Gann_High_Low_Oscillator'] = calculate_gann_high_low_oscillator(df, nday=14)
-    indicators['Hull_Moving_Average'] = calculate_hull_moving_average(df, nday=21)
-    indicators['HMA'] = calculate_hull_moving_average(df, nday=21)
+    indicators['HMA'] = calculate_hma(df, nday=21)
     indicators['Typical_Price'] = calculate_typical_price(df)
+    indicators['PVT'] = calculate_price_volume_trend(df)
     indicators['Weighted_Close_Price'] = calculate_weighted_close_price(df)
-    indicators['Average_Price'] = calculate_average_price(df)
-
+    indicators['SMMA5'] = calculate_Smoothed_Moving_Average(df, nday=5)
+    indicators['SMMA8'] = calculate_Smoothed_Moving_Average(df, nday=8)
+    indicators['SMMA13'] = calculate_Smoothed_Moving_Average(df, nday=13)
+    indicators['KAMA10'] = calculate_Kaufman_Adaptive_Moving_Average(df, nday=10)
+    indicators['TEMA5'] = calculate_Tema(df, nday=5)
+    indicators['TEMA20'] = calculate_Tema(df, nday=20)
+    indicators['VIDYA9'] = calculate_vidya(df, nday=9)
+ 
     return indicators
