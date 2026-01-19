@@ -10,9 +10,9 @@ import threading
 class StockDataHandler:
     def __init__(self):
         self.root_files_path = os.getcwd()
-        self.kospi_file_path = "files_kospi"
-        self.processed_file_path = "modified_kospi" 
-        self.test_dir = "modified_kospi_test"
+        self.kospi_file_path = "files_kosdaq"
+        self.processed_file_path = "modified_kosdaq" 
+        self.test_dir = "modified_kosdaq_test"
         self.test_file = "SK증권_001510.csv"
     
     # add data
@@ -21,6 +21,9 @@ class StockDataHandler:
         df = pd.read_csv(file_path)
 
         moveAverage.calculate_all_indicators(df)
+        # moveAverage.calculate_donchian_channels(df, nday=20)
+        # moveAverage.calculate_volume_rate_of_change(df, nday=25)
+        print(df.head())
         
         df.to_csv(file_path, index=False)
 
@@ -34,8 +37,8 @@ class StockDataHandler:
             df.columns = ["None","Value","Volume","Amount","Date", "Open","High", "Low", "None"]
             df.drop(columns=["None"], inplace=True, errors='ignore')
             # Filter out rows where Date is earlier than 1993
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-            df = df[df['Date'] >= pd.Timestamp('1993-01-01')]
+            # df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            # df = df[df['Date'] >= pd.Timestamp('1993-01-01')]
             df = df.iloc[::-1].reset_index(drop=True)
 
             target_path = os.path.join(self.root_files_path,self.processed_file_path)
@@ -88,27 +91,6 @@ class StockDataHandler:
                     simulated_results = {'File': os.path.basename(read_file_path), **simulated_results}
                     final_df = pd.concat([final_df, pd.DataFrame([simulated_results])], ignore_index=True)
                     
-                    # final_yield5 = tradeSimulator.simulate_SMA_strategy(df,5,file)
-                    # final_yield20 = tradeSimulator.simulate_SMA_strategy(df,20,file)
-                    # final_yield60 = tradeSimulator.simulate_SMA_strategy(df,60,file)
-                    
-                    # final_yieldCrossover_5_20 = tradeSimulator.simulate_SMA_crossover_strategy(df,5,20,file)
-                    
-                    # final_yieldBollinger = tradeSimulator.simulate_bollinger_strategy(df,20,file)
-                    # final_yieldBollinger2 = tradeSimulator.simulate_bollinger_strategy2(df,20,file)
-                    # final_yieldBollinger3 = tradeSimulator.simulate_bollinger_strategy3(df,20,file)
-                    # final_yieldBollinger4 = tradeSimulator.simulate_bollinger_strategy4(df,20,file)
-                    # final_yieldRsi = tradeSimulator.simulate_rsi_strategy(df,rsi_period = 14, overbought = 80, oversold = 30, file_name = file)
-                    # final_yieldMacd = tradeSimulator.simulate_macd_strategy(df,short_period = 12, long_period = 26, signal_period = 9, file_name = file)
-                    # final_yieldStochastic = tradeSimulator.simulate_stochastic_strategy(df, k_period = 14, d_period = 3, file_name = file)
-     
-                    # final_df = pd.concat([final_df, pd.DataFrame({'File':[os.path.basename(read_file_path)],
-                    #                                             '5daySMAYield':[final_yield5],'20daySMAYield':[final_yield20],'60daySMAYield':[final_yield60],
-                    #                                             'yieldCrossover_5_20':[final_yieldCrossover_5_20],'Bollinger':[final_yieldBollinger],
-                    #                                             'Bollinger2':[final_yieldBollinger2],'Bollinger3':[final_yieldBollinger3],'Bollinger4':[final_yieldBollinger4],
-                    #                                             'RSI':[final_yieldRsi],'MACD':[final_yieldMacd],'Stochastic':[final_yieldStochastic]
-                    #                                             })], ignore_index=True)
-
         final_df.to_csv(target_file_path, index=False,encoding='utf-8-sig')
     
     
@@ -200,8 +182,10 @@ class StockDataHandler:
             # print("reverse done")
             # self.process_directory(self.test_dir, self.process_file_add_data)
             # print("add data done")
-            self.do_trade_all_stratage_simulation(self.test_dir)
-            print("trade simulation done")
+            # self.do_trade_all_stratage_simulation(self.test_dir)
+            # print("trade simulation done")
+            # self.process_directory(self.test_dir, self.process_file_data_reverse)
+            self.process_directory(self.test_dir, self.process_file_add_data)
         else:
             print("Invalid command input. Please enter 1, 2, or 3.")
 
